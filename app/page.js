@@ -116,7 +116,7 @@ export default function Home() {
       {/* Nav */}
       <nav className="border-b border-[#1a1a1a] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-base font-semibold text-white">Temporadar</span>
+          <span className="text-base font-semibold text-white">TempoRadar</span>
           <span className="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded-full animate-pulse">LIVE</span>
         </div>
         <a href="https://x.com/frekramp" target="_blank" className="text-xs text-gray-500 hover:text-green-400 transition-colors">Built by @frekramp</a>
@@ -196,7 +196,7 @@ export default function Home() {
 
       {/* Footer */}
       <div className="border-t border-[#1a1a1a] px-4 py-3 text-center">
-        <span className="text-xs text-gray-700">Temporadar — First analytics on Tempo Chain · Updates every 30s</span>
+        <span className="text-xs text-gray-700">TempoRadar — First analytics on Tempo Chain · Updates every 30s</span>
       </div>
 
     </main>
