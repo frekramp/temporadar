@@ -113,7 +113,7 @@ export default function Home() {
     <main className="min-h-screen bg-[#0a0a0a] text-white">
       <div className="border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-white text-xl font-bold"> Tempo Radar</span>
+          <span className="text-white text-xl font-bold"> TempoRadar</span>
           <span className="text-xs bg-green-400/10 text-green-400 px-2 py-1 rounded-full animate-pulse">LIVE</span>
         </div>
         <span className="text-xs text-gray-500">Tempo Chain Analytics — TIMECOIN/USDC · Built by <a href="https://x.com/frekramp" target="_blank" className="text-green-400 hover:underline">@frekramp</a></span>
