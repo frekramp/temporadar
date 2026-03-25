@@ -7,7 +7,7 @@ const supabase = createClient(
 )
 
 const client = createPublicClient({
-  transport: http('https://tempo-mainnet.drpc.org'),
+  transport: http('https://rpc.tempo.xyz'),
 })
 
 const POOL_ADDRESS = '0x88EfeFddEb6925B53a8D959dad64D952D2045779'
@@ -16,71 +16,103 @@ const SWAP_EVENT = parseAbiItem(
   'event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, address indexed to)'
 )
 
-async function startIndexer() {
-  console.log('⚡ Temporadar indexer started...')
-  const blockNumber = await client.getBlockNumber()
-  console.log('✅ Connected to Tempo Chain — block:', blockNumber.toString())
+let lastBlock = null
 
-  client.watchContractEvent({
-    address: POOL_ADDRESS,
-    abi: [SWAP_EVENT],
-    eventName: 'Swap',
-    onLogs: async (logs) => {
-      for (const log of logs) {
-        const { sender, amount0In, amount1In, amount0Out, amount1Out } = log.args
+async function processLog(log) {
+  const { sender, amount0In, amount1In, amount0Out, amount1Out, to } = log.args
 
-        // Both 6 decimals
-        // token0 = TIMECOIN, token1 = USDC.e
-        const timecoinIn = Number(amount0In) / 1e6
-        const usdcIn = Number(amount1In) / 1e6
-        const timecoinOut = Number(amount0Out) / 1e6
-        const usdcOut = Number(amount1Out) / 1e6
+  const timecoinIn = Number(amount0In) / 1e6
+  const usdcIn = Number(amount1In) / 1e6
+  const timecoinOut = Number(amount0Out) / 1e6
+  const usdcOut = Number(amount1Out) / 1e6
 
-        // Log raw to debug
-        console.log('RAW:', { timecoinIn, usdcIn, timecoinOut, usdcOut })
+  let price = 0, amountIn = 0, amountOut = 0, tokenIn = '', tokenOut = ''
 
-        let price = 0
-        let amountIn = 0
-        let amountOut = 0
-        let tokenIn = ''
-        let tokenOut = ''
+  if (timecoinIn > 0) {
+    price = usdcOut / timecoinIn
+    amountIn = timecoinIn
+    amountOut = usdcOut
+    tokenIn = 'TIMECOIN'
+    tokenOut = 'USDC'
+  } else {
+    price = usdcIn / timecoinOut
+    amountIn = usdcIn
+    amountOut = timecoinOut
+    tokenIn = 'USDC'
+    tokenOut = 'TIMECOIN'
+  }
 
-        if (timecoinIn > 0) {
-          // Selling TIMECOIN for USDC
-          price = usdcOut / timecoinIn
-          amountIn = timecoinIn
-          amountOut = usdcOut
-          tokenIn = 'TIMECOIN'
-          tokenOut = 'USDC'
-        } else {
-          // Buying TIMECOIN with USDC
-          price = usdcIn / timecoinOut
-          amountIn = usdcIn
-          amountOut = timecoinOut
-          tokenIn = 'USDC'
-          tokenOut = 'TIMECOIN'
-        }
+  if (price === 0 || price > 1) return
 
-        console.log(`🔄 ${tokenIn} → ${tokenOut} | Price: $${price.toFixed(8)} | Amount: ${amountIn}`)
+  // Get real trader from transaction
+  let trader = to || sender
+  try {
+    const tx = await client.getTransaction({ hash: log.transactionHash })
+    trader = tx.from
+  } catch (e) {}
 
-        const { error } = await supabase.from('swaps').insert({
-          block_number: Number(log.blockNumber),
-          tx_hash: log.transactionHash,
-          token_in: tokenIn,
-          token_out: tokenOut,
-          amount_in: amountIn,
-          amount_out: amountOut,
-          price: price,
-          trader: sender,
-          timestamp: new Date().toISOString(),
-        })
+  const block = await client.getBlock({ blockNumber: log.blockNumber })
+  const timestamp = new Date(Number(block.timestamp) * 1000).toISOString()
 
-        if (error) console.error('❌ DB error:', error)
-        else console.log('✅ Swap saved!')
-      }
-    },
-    onError: (err) => console.error('❌ RPC error:', err),
+  // Check for duplicate
+  const { data: existing } = await supabase
+    .from('swaps')
+    .select('id')
+    .eq('tx_hash', log.transactionHash)
+    .limit(1)
+
+  if (existing && existing.length > 0) return
+
+  const { error } = await supabase.from('swaps').insert({
+    block_number: Number(log.blockNumber),
+    tx_hash: log.transactionHash,
+    token_in: tokenIn,
+    token_out: tokenOut,
+    amount_in: amountIn,
+    amount_out: amountOut,
+    price: price,
+    trader: trader,
+    timestamp: timestamp,
   })
+
+  if (!error) console.log(`✅ ${tokenIn} → ${tokenOut} | $${price.toFixed(8)} | trader: ${trader}`)
 }
 
-startIndexer()
+async function poll() {
+  try {
+    const latestBlock = await client.getBlockNumber()
+
+    if (!lastBlock) {
+      lastBlock = latestBlock - 10n
+    }
+
+    if (latestBlock <= lastBlock) return
+
+    const logs = await client.getLogs({
+      address: POOL_ADDRESS,
+      event: SWAP_EVENT,
+      fromBlock: lastBlock + 1n,
+      toBlock: latestBlock,
+    })
+
+    for (const log of logs) {
+      await processLog(log)
+    }
+
+    lastBlock = latestBlock
+  } catch (err) {
+    console.log(`⚠️ Poll error: ${err.message}`)
+  }
+}
+
+async function start() {
+  console.log('⚡ Temporadar indexer started (polling mode)...')
+  const block = await client.getBlockNumber()
+  console.log(`✅ Connected — block: ${block}`)
+
+  // Poll every 10 seconds
+  setInterval(poll, 10000)
+  poll()
+}
+
+start()
