@@ -17,29 +17,30 @@ export default function Home() {
 
     const chart = createChart(chartRef.current, {
       width: chartRef.current.clientWidth,
-      height: 450,
+      height: window.innerWidth < 768 ? 280 : 420,
       layout: {
         background: { color: '#0a0a0a' },
-        textColor: '#9ca3af',
+        textColor: '#555',
       },
       grid: {
-        vertLines: { color: '#111111' },
-        horzLines: { color: '#111111' },
+        vertLines: { color: '#111' },
+        horzLines: { color: '#111' },
       },
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        borderColor: '#222222',
+        borderColor: '#1a1a1a',
       },
       rightPriceScale: {
-        borderColor: '#222222',
+        borderColor: '#1a1a1a',
         autoScale: true,
-        scaleMargins: { top: 0.1, bottom: 0.1 },
-        minimumWidth: 80,
+        scaleMargins: { top: 0.15, bottom: 0.15 },
+        minimumWidth: window.innerWidth < 768 ? 60 : 100,
       },
       localization: {
         priceFormatter: (p) => '$' + Number(p).toFixed(8),
       },
+      crosshair: { mode: 1 },
     })
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
@@ -111,87 +112,93 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-white">
-      <div className="border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-white text-xl font-bold"> TempoRadar</span>
-          <span className="text-xs bg-green-400/10 text-green-400 px-2 py-1 rounded-full animate-pulse">LIVE</span>
-        </div>
-        <span className="text-xs text-gray-500">Tempo Chain Analytics — TIMECOIN/USDC · Built by <a href="https://x.com/frekramp" target="_blank" className="text-green-400 hover:underline">@frekramp</a></span>
-      </div>
 
-      <div className="border-b border-[#1a1a1a] px-6 py-3 flex items-center gap-8 flex-wrap">
-        <div>
-          <span className="text-2xl font-bold text-white">${stats.price}</span>
-          <span className={`ml-2 text-sm font-medium ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+      {/* Nav */}
+      <nav className="border-b border-[#1a1a1a] px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-base font-semibold text-white">Temporadar</span>
+          <span className="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-0.5 rounded-full animate-pulse">LIVE</span>
+        </div>
+        <a href="https://x.com/frekramp" target="_blank" className="text-xs text-gray-500 hover:text-green-400 transition-colors">Built by @frekramp</a>
+      </nav>
+
+      {/* Price */}
+      <div className="px-4 py-4 border-b border-[#1a1a1a]">
+        <div className="text-xs text-gray-500 mb-1">TIMECOIN / USDC · Tempo Chain</div>
+        <div className="flex items-baseline gap-2 mb-4">
+          <span className="text-2xl font-bold">${stats.price}</span>
+          <span className={`text-sm font-medium px-1.5 py-0.5 rounded ${isPositive ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
             {isPositive ? '▲' : '▼'} {Math.abs(stats.change)}% 24h
           </span>
         </div>
-        <div className="flex gap-8 text-sm flex-wrap">
-          <div>
-            <p className="text-gray-500">24h Volume</p>
-            <p className="text-white font-medium">${Number(stats.volume24h).toLocaleString()}</p>
+
+        {/* Stats grid */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-[#111] rounded-lg p-3">
+            <p className="text-gray-500 text-xs mb-1">24h Vol</p>
+            <p className="text-white text-sm font-medium">${Number(stats.volume24h).toLocaleString()}</p>
           </div>
-          <div>
-            <p className="text-gray-500">Total Volume</p>
-            <p className="text-white font-medium">${Number(stats.totalVolume).toLocaleString()}</p>
+          <div className="bg-[#111] rounded-lg p-3">
+            <p className="text-gray-500 text-xs mb-1">Total Vol</p>
+            <p className="text-white text-sm font-medium">${Number(stats.totalVolume).toLocaleString()}</p>
           </div>
-          <div>
-            <p className="text-gray-500">24h Trades</p>
-            <p className="text-white font-medium">{stats.trades24h}</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Pair</p>
-            <p className="text-white font-medium">TIMECOIN/USDC</p>
-          </div>
-          <div>
-            <p className="text-gray-500">Chain</p>
-            <p className="text-green-400 font-medium">Tempo</p>
+          <div className="bg-[#111] rounded-lg p-3">
+            <p className="text-gray-500 text-xs mb-1">24h Trades</p>
+            <p className="text-white text-sm font-medium">{stats.trades24h}</p>
           </div>
         </div>
       </div>
 
-      <div className="px-6 py-4 border-b border-[#1a1a1a]">
+      {/* Chart */}
+      <div className="border-b border-[#1a1a1a]">
         {loading ? (
-          <div className="h-[450px] flex items-center justify-center text-gray-500">
-            Loading chart...
+          <div className="h-[280px] md:h-[420px] flex flex-col items-center justify-center gap-3">
+            <div className="w-5 h-5 border-2 border-green-400 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-gray-600 text-xs">Loading chart...</span>
           </div>
         ) : (
-          <div ref={chartRef} className="w-full rounded-lg overflow-hidden" />
+          <div ref={chartRef} className="w-full" />
         )}
       </div>
 
-      <div className="px-6 py-4">
-        <h2 className="text-sm font-medium text-gray-400 mb-4">Recent Trades</h2>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-gray-500 border-b border-[#1a1a1a]">
-              <th className="text-left py-2 font-normal">Time</th>
-              <th className="text-left py-2 font-normal">Type</th>
-              <th className="text-left py-2 font-normal">Amount</th>
-              <th className="text-left py-2 font-normal">Price</th>
-              <th className="text-left py-2 font-normal">Trader</th>
-            </tr>
-          </thead>
-          <tbody>
-            {swaps.slice(-30).reverse().map((swap) => (
-              <tr key={swap.id} className="border-b border-[#111111] hover:bg-[#111111] transition-colors">
-                <td className="py-2 text-gray-500">{new Date(swap.timestamp).toLocaleString()}</td>
-                <td className={`py-2 font-bold ${swap.token_in === 'USDC' ? 'text-green-400' : 'text-red-400'}`}>
-                  {swap.token_in === 'USDC' ? '▲ BUY' : '▼ SELL'}
-                </td>
-                <td className="py-2 text-white">
-                  {Number(swap.amount_in).toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.token_in} → {Number(swap.amount_out).toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.token_out === swap.token_in ? '' : swap.token_out}
+      {/* Recent Trades */}
+      <div className="px-4 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-gray-300">Recent Trades</h2>
+          <span className="text-xs text-gray-600">{swaps.length} total</span>
+        </div>
 
-                </td>
-                <td className="py-2 text-white">${Number(swap.price).toFixed(8)}</td>
-                <td className="py-2 text-gray-500 font-mono">
-                  {swap.trader?.slice(0, 6)}...{swap.trader?.slice(-4)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="space-y-2">
+          {[...swaps].reverse().slice(0, 50).map((swap) => (
+            <div key={swap.id} className="flex items-center justify-between bg-[#111] rounded-lg px-3 py-2.5 hover:bg-[#161616] transition-colors">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`text-xs font-bold shrink-0 ${swap.token_in === 'USDC' ? 'text-green-400' : 'text-red-400'}`}>
+                  {swap.token_in === 'USDC' ? '▲' : '▼'}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs text-white truncate">
+                    {Number(swap.amount_in).toLocaleString(undefined, { maximumFractionDigits: 2 })} {swap.token_in}
+                    <span className="text-gray-500"> → </span>
+                    {Number(swap.amount_out).toLocaleString(undefined, { maximumFractionDigits: 2 })} {swap.token_out}
+                  </div>
+                  <div className="text-[10px] text-gray-600 mt-0.5">
+                    {new Date(swap.timestamp).toLocaleString()} · {swap.trader?.slice(0, 6)}...{swap.trader?.slice(-4)}
+                  </div>
+                </div>
+              </div>
+              <div className="text-xs text-gray-400 shrink-0 ml-2">
+                ${Number(swap.price).toFixed(8)}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+
+      {/* Footer */}
+      <div className="border-t border-[#1a1a1a] px-4 py-3 text-center">
+        <span className="text-xs text-gray-700">Temporadar — First analytics on Tempo Chain · Updates every 30s</span>
+      </div>
+
     </main>
   )
 }
