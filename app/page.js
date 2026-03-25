@@ -180,8 +180,8 @@ export default function Home() {
                   {swap.token_in === 'USDC' ? '▲ BUY' : '▼ SELL'}
                 </td>
                 <td className="py-2 text-white">
-                  {Number(swap.amount_in).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                  <span className="text-gray-500 ml-1">{swap.token_in}</span>
+                  {Number(swap.amount_in).toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.token_in} → {Number(swap.amount_out).toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.token_out === swap.token_in ? '' : swap.token_out}
+
                 </td>
                 <td className="py-2 text-white">${Number(swap.price).toFixed(8)}</td>
                 <td className="py-2 text-gray-500 font-mono">
