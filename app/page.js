@@ -87,8 +87,8 @@ export default function Home() {
     const latestPrice = Number(data[data.length - 1]?.price || 0)
     const firstPrice24h = last24h.length > 0 ? Number(last24h[0]?.price || 0) : latestPrice
     const change = firstPrice24h > 0 ? ((latestPrice - firstPrice24h) / firstPrice24h * 100).toFixed(2) : 0
-    const volume24h = last24h.reduce((sum, s) => sum + Number(s.amount_in), 0)
-    const totalVolume = data.reduce((sum, s) => sum + Number(s.amount_in), 0)
+    const volume24h = last24h.filter(s => s.token_in === 'USDC').reduce((sum, s) => sum + Number(s.amount_in), 0) + last24h.filter(s => s.token_in === 'TIMECOIN').reduce((sum, s) => sum + Number(s.amount_out), 0)
+    const totalVolume = data.filter(s => s.token_in === 'USDC').reduce((sum, s) => sum + Number(s.amount_in), 0) + data.filter(s => s.token_in === 'TIMECOIN').reduce((sum, s) => sum + Number(s.amount_out), 0)
 
     setStats({
       volume24h: volume24h.toFixed(2),
