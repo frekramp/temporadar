@@ -4,102 +4,95 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const PAIRS = [
-  { label: 'TIMECOIN/USDC', value: 'TIMECOIN/USDC', color: '#00ff88' },
-  { label: 'ENSH/USDC', value: 'ENSH/USDC', color: '#a78bfa' },
+  { label: 'TIMECOIN/USDC', value: 'TIMECOIN/USDC', color: '#00ff88', priceDecimals: 8 },
+
 ]
 
 async function fetchSwapsForPair(pair) {
   let allData = []
   let page = 0
   const pageSize = 1000
-
   while (true) {
     const { data, error } = await supabase
       .from('swaps')
       .select('*')
       .eq('pair', pair)
       .gt('price', 0)
-      .lt('price', 100)
       .order('timestamp', { ascending: true })
       .range(page * pageSize, (page + 1) * pageSize - 1)
-
     if (error || !data || data.length === 0) break
     allData = [...allData, ...data]
     if (data.length < pageSize) break
     page++
   }
-
   return allData
 }
 
 export default function Home() {
+  const chartContainerRef = useRef(null)
   const chartRef = useRef(null)
+  const seriesRef = useRef(null)
   const [swaps, setSwaps] = useState([])
   const [stats, setStats] = useState({ volume24h: 0, totalVolume: 0, trades24h: 0, price: 0, change: 0 })
   const [loading, setLoading] = useState(true)
   const [selectedPair, setSelectedPair] = useState('TIMECOIN/USDC')
-  const allSwapsRef = useRef([])
+  const selectedPairRef = useRef('TIMECOIN/USDC')
 
-  const chartInstanceRef = useRef(null)
-
-  async function renderChart(data) {
-    const { createChart, CandlestickSeries } = await import('lightweight-charts')
-    if (!chartRef.current) return
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.remove()
-      chartInstanceRef.current = null
+  function destroyChart() {
+    try {
+      if (chartRef.current) {
+        chartRef.current.remove()
+        chartRef.current = null
+        seriesRef.current = null
+      }
+    } catch(e) {}
+    if (chartContainerRef.current) {
+      chartContainerRef.current.innerHTML = ''
     }
-    chartRef.current.innerHTML = ''
+  }
 
-    const chart = createChart(chartRef.current, {
-      width: chartRef.current.clientWidth,
+  async function buildChart(data, pair) {
+    destroyChart()
+    if (!chartContainerRef.current || data.length === 0) return
+
+    const { createChart, CandlestickSeries } = await import('lightweight-charts')
+    const pairConfig = PAIRS.find(p => p.value === pair)
+    const color = pairConfig?.color || '#00ff88'
+    const decimals = pairConfig?.priceDecimals || 8
+
+    const chart = createChart(chartContainerRef.current, {
+      width: chartContainerRef.current.clientWidth,
       height: window.innerWidth < 768 ? 280 : 420,
-      layout: {
-        background: { color: '#0a0a0a' },
-        textColor: '#555',
-      },
-      grid: {
-        vertLines: { color: '#111' },
-        horzLines: { color: '#111' },
-      },
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-        borderColor: '#1a1a1a',
-      },
+      layout: { background: { color: '#0a0a0a' }, textColor: '#555' },
+      grid: { vertLines: { color: '#111' }, horzLines: { color: '#111' } },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#1a1a1a' },
       rightPriceScale: {
         borderColor: '#1a1a1a',
         autoScale: true,
-        scaleMargins: { top: 0.15, bottom: 0.15 },
-        minimumWidth: window.innerWidth < 768 ? 60 : 100,
+        scaleMargins: { top: 0.15, bottom: 0.2 },
+        minimumWidth: 110,
       },
       localization: {
-        priceFormatter: (p) => '$' + Number(p).toFixed(8),
+        priceFormatter: (p) => '$' + Number(p).toFixed(decimals),
       },
       crosshair: { mode: 1 },
     })
 
-    const pairColor = PAIRS.find(p => p.value === selectedPair)?.color || '#00ff88'
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: pairColor,
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: color,
       downColor: '#ff3b3b',
-      borderUpColor: pairColor,
+      borderUpColor: color,
       borderDownColor: '#ff3b3b',
-      wickUpColor: pairColor,
+      wickUpColor: color,
       wickDownColor: '#ff3b3b',
-      priceFormat: {
-        type: 'price',
-        precision: 8,
-        minMove: 0.00000001,
-      },
+      priceFormat: { type: 'price', precision: decimals, minMove: Math.pow(10, -decimals) },
     })
 
-    const interval = 3600
     const buckets = {}
     data.forEach((swap) => {
-      const time = Math.floor(new Date(swap.timestamp).getTime() / 1000 / interval) * interval
+      const time = Math.floor(new Date(swap.timestamp).getTime() / 1000 / 3600) * 3600
       const p = Number(swap.price)
+      if (!p) return
       if (!buckets[time]) {
         buckets[time] = { time, open: p, high: p, low: p, close: p }
       } else {
@@ -110,20 +103,27 @@ export default function Home() {
     })
 
     const candles = Object.values(buckets).sort((a, b) => a.time - b.time)
-    candleSeries.setData(candles)
+    series.setData(candles)
     chart.timeScale().fitContent()
+
+    chartRef.current = chart
+    seriesRef.current = series
   }
 
   async function loadData(pair) {
     setLoading(true)
+    setSwaps([])
+    destroyChart()
+
     const data = await fetchSwapsForPair(pair)
-    if (!data || data.length === 0) {
-      setLoading(false)
-      setSwaps([])
-      return
-    }
-    allSwapsRef.current = data
+
+    // Check if pair changed while loading
+    if (selectedPairRef.current !== pair) return
+
     setLoading(false)
+
+    if (!data || data.length === 0) return
+
     setSwaps(data)
 
     const now = Date.now()
@@ -131,32 +131,40 @@ export default function Home() {
     const latestPrice = Number(data[data.length - 1]?.price || 0)
     const firstPrice24h = last24h.length > 0 ? Number(last24h[0]?.price || 0) : latestPrice
     const change = firstPrice24h > 0 ? ((latestPrice - firstPrice24h) / firstPrice24h * 100).toFixed(2) : 0
-    const volume24h = last24h.filter(s => s.token_in === 'USDC').reduce((sum, s) => sum + Number(s.amount_in), 0) + last24h.filter(s => s.token_in !== 'USDC').reduce((sum, s) => sum + Number(s.amount_out), 0)
-    const totalVolume = data.filter(s => s.token_in === 'USDC').reduce((sum, s) => sum + Number(s.amount_in), 0) + data.filter(s => s.token_in !== 'USDC').reduce((sum, s) => sum + Number(s.amount_out), 0)
+    const stableToken = pair === 'TIMECOIN/USDC' ? 'USDC' : 'pathUSD'
+    const volume24h = last24h.filter(s => s.token_in === stableToken).reduce((sum, s) => sum + Number(s.amount_in), 0) + last24h.filter(s => s.token_out === stableToken).reduce((sum, s) => sum + Number(s.amount_out), 0)
+    const totalVolume = data.filter(s => s.token_in === stableToken).reduce((sum, s) => sum + Number(s.amount_in), 0) + data.filter(s => s.token_out === stableToken).reduce((sum, s) => sum + Number(s.amount_out), 0)
 
     setStats({
       volume24h: volume24h.toFixed(2),
       totalVolume: totalVolume.toFixed(2),
       trades24h: last24h.length,
-      price: latestPrice.toFixed(8),
-      change: change,
+      price: latestPrice.toFixed(PAIRS.find(p => p.value === pair)?.priceDecimals || 8),
+      change,
     })
 
-    renderChart(data)
+    await buildChart(data, pair)
+  }
+
+  function switchPair(pair) {
+    selectedPairRef.current = pair
+    setSelectedPair(pair)
   }
 
   useEffect(() => {
     loadData(selectedPair)
     const interval = setInterval(() => loadData(selectedPair), 30000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      destroyChart()
+    }
   }, [selectedPair])
 
   const isPositive = Number(stats.change) >= 0
-  const pairColor = PAIRS.find(p => p.value === selectedPair)?.color || '#00ff88'
+  const pairConfig = PAIRS.find(p => p.value === selectedPair)
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-white">
-
       {/* Nav */}
       <nav className="border-b border-[#1a1a1a] px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -166,25 +174,24 @@ export default function Home() {
         <a href="https://x.com/frekramp" target="_blank" className="text-xs text-gray-500 hover:text-green-400 transition-colors">Built by @frekramp</a>
       </nav>
 
-      {/* Pair Selector */}
-      <div className="border-b border-[#1a1a1a] px-4 py-2 flex gap-2 overflow-x-auto">
+      {/* Pair Tabs */}
+      <div className="border-b border-[#1a1a1a] px-4 py-2 flex gap-2">
         {PAIRS.map((pair) => (
           <button
             key={pair.value}
-            onClick={() => setSelectedPair(pair.value)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
-              selectedPair === pair.value
-                ? 'text-black font-bold'
-                : 'bg-[#111] text-gray-400 hover:text-white'
-            }`}
-            style={selectedPair === pair.value ? { backgroundColor: pair.color } : {}}
+            onClick={() => switchPair(pair.value)}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all"
+            style={selectedPair === pair.value
+              ? { backgroundColor: pair.color, color: '#000' }
+              : { backgroundColor: '#111', color: '#888' }
+            }
           >
             {pair.label}
           </button>
         ))}
       </div>
 
-      {/* Price */}
+      {/* Price Header */}
       <div className="px-4 py-4 border-b border-[#1a1a1a]">
         <div className="text-xs text-gray-500 mb-1">{selectedPair} · Tempo Chain</div>
         <div className="flex items-baseline gap-2 mb-4">
@@ -193,7 +200,6 @@ export default function Home() {
             {isPositive ? '▲' : '▼'} {Math.abs(stats.change)}% 24h
           </span>
         </div>
-
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-[#111] rounded-lg p-3">
             <p className="text-gray-500 text-xs mb-1">24h Vol</p>
@@ -214,32 +220,32 @@ export default function Home() {
       <div className="border-b border-[#1a1a1a]">
         {loading ? (
           <div className="h-[280px] md:h-[420px] flex flex-col items-center justify-center gap-3">
-            <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: pairColor, borderTopColor: 'transparent' }}></div>
-            <span className="text-gray-600 text-xs">Loading {selectedPair} chart...</span>
+            <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
+              style={{ borderColor: pairConfig?.color, borderTopColor: 'transparent' }} />
+            <span className="text-gray-600 text-xs">Loading {selectedPair}...</span>
           </div>
         ) : swaps.length === 0 ? (
-          <div className="h-[280px] md:h-[420px] flex flex-col items-center justify-center gap-3">
-            <span className="text-gray-600 text-sm">No data yet for {selectedPair}</span>
+          <div className="h-[280px] md:h-[420px] flex flex-col items-center justify-center gap-2">
+            <span className="text-gray-500 text-sm">No data yet</span>
             <span className="text-gray-700 text-xs">Backfill in progress...</span>
           </div>
         ) : (
-          <div ref={chartRef} className="w-full" />
+          <div ref={chartContainerRef} className="w-full" />
         )}
       </div>
 
-      {/* Recent Trades */}
+      {/* Trades */}
       <div className="px-4 py-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-gray-300">Recent Trades</h2>
           <span className="text-xs text-gray-600">{swaps.length} total</span>
         </div>
-
         <div className="space-y-2">
           {[...swaps].reverse().slice(0, 50).map((swap) => (
-            <div key={swap.id} className="flex items-center justify-between bg-[#111] rounded-lg px-3 py-2.5 hover:bg-[#161616] transition-colors">
+            <div key={swap.id} className="flex items-center justify-between bg-[#111] rounded-lg px-3 py-2.5">
               <div className="flex items-center gap-2 min-w-0">
-                <span className={`text-xs font-bold shrink-0 ${swap.token_in === 'USDC' ? 'text-green-400' : 'text-red-400'}`}>
-                  {swap.token_in === 'USDC' ? '▲' : '▼'}
+                <span className={`text-xs font-bold shrink-0 ${swap.token_in === 'USDC' || swap.token_in === 'pathUSD' ? 'text-green-400' : 'text-red-400'}`}>
+                  {swap.token_in === 'USDC' || swap.token_in === 'pathUSD' ? '▲' : '▼'}
                 </span>
                 <div className="min-w-0">
                   <div className="text-xs text-white truncate">
@@ -253,18 +259,16 @@ export default function Home() {
                 </div>
               </div>
               <div className="text-xs text-gray-400 shrink-0 ml-2">
-                ${Number(swap.price).toFixed(8)}
+                ${Number(swap.price).toFixed(pairConfig?.priceDecimals || 8)}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Footer */}
       <div className="border-t border-[#1a1a1a] px-4 py-3 text-center">
         <span className="text-xs text-gray-700">Temporadar — First analytics on Tempo Chain · Updates every 30s</span>
       </div>
-
     </main>
   )
 }
