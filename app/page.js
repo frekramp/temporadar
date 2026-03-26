@@ -40,9 +40,15 @@ export default function Home() {
   const [selectedPair, setSelectedPair] = useState('TIMECOIN/USDC')
   const allSwapsRef = useRef([])
 
+  const chartInstanceRef = useRef(null)
+
   async function renderChart(data) {
     const { createChart, CandlestickSeries } = await import('lightweight-charts')
     if (!chartRef.current) return
+    if (chartInstanceRef.current) {
+      chartInstanceRef.current.remove()
+      chartInstanceRef.current = null
+    }
     chartRef.current.innerHTML = ''
 
     const chart = createChart(chartRef.current, {

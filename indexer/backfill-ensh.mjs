@@ -17,17 +17,21 @@ const SWAP_EVENT = parseAbiItem(
   'event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, address indexed to)'
 )
 
+// First delete wrong ENSH data
+async function cleanup() {
+  await supabase.from('swaps').delete().eq('pair', 'ENSH/USDC')
+  console.log('🧹 Cleaned old ENSH data')
+}
+
 async function backfill() {
+  await cleanup()
+
   const latestBlock = await client.getBlockNumber()
   const START_BLOCK = 10297353n
   console.log(`⚡ Backfilling ENSH/USDC from ${START_BLOCK} → ${latestBlock}`)
 
   let totalSaved = 0
   let fromBlock = START_BLOCK
-
-  // First figure out token order — check which is ENSH
-  // We'll log raw amounts to figure out decimals
-  let ensh0 = null // is ENSH token0 or token1?
 
   while (fromBlock < latestBlock) {
     const toBlock = fromBlock + CHUNK_SIZE > latestBlock ? latestBlock : fromBlock + CHUNK_SIZE
@@ -44,30 +48,25 @@ async function backfill() {
       for (const log of logs) {
         const { sender, amount0In, amount1In, amount0Out, amount1Out, to } = log.args
 
-        // Both tokens likely 6 decimals
-        const token0In = Number(amount0In) / 1e6
-        const token1In = Number(amount1In) / 1e6
-        const token0Out = Number(amount0Out) / 1e6
-        const token1Out = Number(amount1Out) / 1e6
+        // USDC is token0, ENSH is token1 (quoteToken=token1 means token1 is quote=USDC... wait)
+        // defined.fi says quoteToken=token1, so token1=USDC, token0=ENSH
+        // Let's use: token0=ENSH, token1=USDC
+        const enshIn = Number(amount0In) / 1e6
+        const usdcIn = Number(amount1In) / 1e6
+        const enshOut = Number(amount0Out) / 1e6
+        const usdcOut = Number(amount1Out) / 1e6
 
-        // Figure out which is ENSH vs USDC from amounts
-        // USDC amounts will be small (< 10000), ENSH can be large
-        let enshIn, usdcIn, enshOut, usdcOut, tokenIn, tokenOut, price, amountIn, amountOut
+        let price = 0, amountIn = 0, amountOut = 0, tokenIn = '', tokenOut = ''
 
-        if (token0In > 0) {
-          // Selling token0 for token1
-          // Determine which is ENSH by checking defined.fi quoteToken=token1
-          // token1 is the quote = USDC, token0 = ENSH
-          enshIn = token0In
-          usdcOut = token1Out
+        if (enshIn > 0) {
+          // Selling ENSH for USDC
           price = usdcOut / enshIn
           amountIn = enshIn
           amountOut = usdcOut
           tokenIn = 'ENSH'
           tokenOut = 'USDC'
         } else {
-          usdcIn = token1In
-          enshOut = token0Out
+          // Buying ENSH with USDC
           price = usdcIn / enshOut
           amountIn = usdcIn
           amountOut = enshOut
@@ -85,14 +84,6 @@ async function backfill() {
 
         const block = await client.getBlock({ blockNumber: log.blockNumber })
         const timestamp = new Date(Number(block.timestamp) * 1000).toISOString()
-
-        const { data: existing } = await supabase
-          .from('swaps')
-          .select('id')
-          .eq('tx_hash', log.transactionHash)
-          .limit(1)
-
-        if (existing && existing.length > 0) continue
 
         const { error } = await supabase.from('swaps').insert({
           block_number: Number(log.blockNumber),
